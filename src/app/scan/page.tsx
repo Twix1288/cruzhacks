@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import CameraView from '@/src/components/camera/CameraView';
+import CameraView from '@/components/camera/CameraView';
 
 export default function ScanPage() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);

@@ -4,7 +4,7 @@
 import React, { useRef, useState } from 'react';
 import { Camera, Upload } from 'lucide-react';
 // Ensure correct import path using the alias defined in tsconfig.json
-import { createClient } from '@/src/utils/supabase/client';
+import { createClient } from '@/utils/supabase/client';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -57,7 +57,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken }) => {
     }
 
     setIsLoading(true); // Start loading state to prevent double submission
-    
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -122,8 +122,9 @@ const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken }) => {
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // Add options for better geolocation
       );
 
-    } catch (error: any) {
-      toast.error(`Upload failed: ${error.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Upload failed: ${message}`);
       setIsLoading(false); // Reset loading state on upload error
     }
     // Removed the finally block to prevent premature resetting of isLoading, as geolocation
@@ -141,7 +142,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken }) => {
         onChange={handleFileChange}
         disabled={isLoading} // Disable input while loading
       />
-      
+
       {!selectedImageUrl ? (
         <button
           onClick={triggerFileInput}

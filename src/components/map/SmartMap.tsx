@@ -5,11 +5,14 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { createClient } from '@/utils/supabase/client';
 import { Report } from '@/types';
+import { Camera, X } from 'lucide-react';
+import CameraView from '@/components/camera/CameraView';
 
 export default function SmartMap() {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<mapboxgl.Map | null>(null);
     const [reports, setReports] = useState<Report[]>([]);
+    const [isScanOpen, setIsScanOpen] = useState(false);
 
     useEffect(() => {
         const fetchReports = async () => {
@@ -115,6 +118,35 @@ export default function SmartMap() {
     return (
         <div className="w-full h-[calc(100vh-64px)] relative">
             <div ref={mapContainer} className="w-full h-full" />
+
+            {/* Floating Action Button */}
+            <button
+                onClick={() => setIsScanOpen(true)}
+                className="absolute bottom-8 right-8 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 transition-colors"
+                aria-label="Open Camera"
+            >
+                <Camera className="h-6 w-6" />
+            </button>
+
+            {/* Camera Modal */}
+            {isScanOpen && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="relative w-full max-w-lg rounded-2xl bg-zinc-900 p-6 shadow-2xl border border-zinc-800">
+                        <button
+                            onClick={() => setIsScanOpen(false)}
+                            className="absolute right-4 top-4 text-zinc-400 hover:text-white"
+                        >
+                            <X className="h-6 w-6" />
+                        </button>
+                        <h2 className="mb-4 text-xl font-bold text-white">New Report</h2>
+                        <CameraView onPhotoTaken={(file) => {
+                            console.log('Photo taken:', file);
+                            // Optionally close modal here, or let CameraView handle the flow
+                            // setIsScanOpen(false); 
+                        }} />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
