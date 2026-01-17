@@ -1,9 +1,9 @@
-import { generateObject} from 'ai';
+import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
-import { createClient } from '@/src/utils/supabase/server';
-import type { AnalyzeRequest, AnalyzeResponse } from '@/src/types';
+import { createClient } from '@/utils/supabase/server';
+import type { AnalyzeRequest, AnalyzeResponse } from '@/types';
 
 // Use edge runtime for better performance
 export const runtime = 'edge';
@@ -49,45 +49,45 @@ export async function POST(request: Request) {
         }
 
         // AI Analysis using Gemini 1.5 Flash
-        const systemPrompt = `You are a Park Ranger with expertise in California ecosystems. Analyze the provided image to:
+        const systemPrompt = `You are a Park Ranger with expertise in Santa Cruz, California ecosystems. Analyze the provided image to:
 1. Identify the plant/species name
-2. Determine if it's an invasive species in California
+2. Determine if it's an invasive species in Santa Cruz, California
 3. Rate the fire hazard level (safe, low, medium, high, or critical)
 4. Provide a brief description of the species and its characteristics
 5. Provide a confidence score from 0.0 to 1.0 for your identification
 
-Be precise and consider California-specific invasive species lists.`;
+Be precise and consider the Santa Cruz County invasive weeds list.`;
 
         const result = await generateObject({
-            model: google('gemini-1.5-flash'),
+            model: google('gemini-flash-latest'),
             schema: analyzeDataSchema,
             messages: [
-            {
-                role: 'system',
-                content: systemPrompt,
-            },
-            {
-                role: 'user',
-                content: [
                 {
-                    type: 'text',
-                    text: `Please analyze this image of a plant/species found at coordinates ${lat}, ${long} in California.`,
+                    role: 'system',
+                    content: systemPrompt,
                 },
                 {
-                    type: 'image',
-                    image: imageUrl,
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'text',
+                            text: `Please analyze this image of a plant/species found at coordinates ${lat}, ${long} in California.`,
+                        },
+                        {
+                            type: 'image',
+                            image: imageUrl,
+                        },
+                    ],
                 },
-                ],
-            },
             ],
         });
-  
+
 
         const analysisData = result.object;
         const confidence =
-        typeof analysisData.confidence === 'number'
-            ? Math.min(Math.max(analysisData.confidence, 0), 1)
-            : 0.75; // fallback
+            typeof analysisData.confidence === 'number'
+                ? Math.min(Math.max(analysisData.confidence, 0), 1)
+                : 0.75; // fallback
 
 
         // Insert report into database

@@ -11,6 +11,7 @@ import CameraView from '@/components/camera/CameraView';
 export default function SmartMap() {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<mapboxgl.Map | null>(null);
+    const markers = useRef<mapboxgl.Marker[]>([]);
     const [reports, setReports] = useState<Report[]>([]);
     const [isScanOpen, setIsScanOpen] = useState(false);
 
@@ -21,11 +22,41 @@ export default function SmartMap() {
             if (error) {
                 console.error('Error fetching reports:', error);
             } else {
+                console.log('Reports fetched:', data);
                 setReports(data || []);
             }
         };
 
         fetchReports();
+
+        // Set up Realtime subscription
+        const supabase = createClient();
+        const channel = supabase
+            .channel('reports_channel')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'reports',
+                },
+                (payload) => {
+                    console.log('🔔 REALTIME EVENT RECEIVED:', payload);
+                    const newReport = payload.new as Report;
+                    setReports((prev) => {
+                        console.log('Adding new report to state:', newReport);
+                        return [...prev, newReport];
+                    });
+                }
+            )
+            .subscribe((status) => {
+                console.log('🔌 REALTIME SUBSCRIPTION STATUS:', status);
+            });
+
+        return () => {
+            console.log('Cleaning up Realtime subscription');
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     useEffect(() => {
@@ -58,7 +89,13 @@ export default function SmartMap() {
     }, []);
 
     useEffect(() => {
-        if (!map.current || reports.length === 0) return;
+        if (!map.current) return;
+
+        // Clear existing markers
+        markers.current.forEach((marker) => marker.remove());
+        markers.current = [];
+
+        console.log(`Rendering ${reports.length} markers`);
 
         reports.forEach((report) => {
             // Create marker element
@@ -93,24 +130,80 @@ export default function SmartMap() {
                 if (typeof report.location === 'object' && report.location.coordinates) {
                     coordinates = report.location.coordinates;
                 }
-                // Case 2: GeoJSON String
+                // Case 2: GeoJSON String or WKT
                 else if (typeof report.location === 'string') {
-                    try {
-                        const parsed = JSON.parse(report.location);
-                        if (parsed.coordinates) {
-                            coordinates = parsed.coordinates;
+                    // Check if it's WKT format (e.g., "POINT(-122.06 36.99)")
+                    if (report.location.startsWith('POINT')) {
+                        const matches = report.location.match(/POINT\(([-\d.]+) ([-\d.]+)\)/);
+                        if (matches && matches.length === 3) {
+                            coordinates = [parseFloat(matches[1]), parseFloat(matches[2])];
                         }
-                    } catch (e) {
-                        console.error('Failed to parse location string:', e);
+                    }
+                    // Check if it's Postgres Point format (e.g., "(-122.06,36.99)")
+                    else if (report.location.startsWith('(')) {
+                        const matches = report.location.match(/\(([-\d.]+)[, ]+([-\d.]+)\)/);
+                        if (matches && matches.length === 3) {
+                            coordinates = [parseFloat(matches[1]), parseFloat(matches[2])];
+                        }
+                    }
+                    // Check if it's WKB Hex format (PostGIS default)
+                    // e.g., "0101000020E6100000..."
+                    else if (/^[0-9A-Fa-f]+$/.test(report.location) && report.location.length >= 50) {
+                        try {
+                            const hex = report.location;
+                            // We assume Little Endian (01) for standard PostGIS output on this architecture
+                            // But we should check the first byte: 01 = Little Endian, 00 = Big Endian
+
+                            // Simple parser for Point(4326) WKB
+                            // Byte 0: Endianness
+                            // Bytes 1-4: Type
+                            // Bytes 5-8: SRID (if EWKB)
+                            // Bytes 9-24: X, Y (doubles)
+
+                            const buffer = new Uint8Array(hex.match(/[\da-f]{2}/gi)!.map((h) => parseInt(h, 16))).buffer;
+                            const view = new DataView(buffer);
+                            const littleEndian = view.getUint8(0) === 1;
+
+                            // Skip Type (4 bytes) and SRID (4 bytes) -> Start at offset 9 for X
+                            // Note: This assumes EWKB with SRID present (0101000020...)
+                            // If standard WKB (0101000000...), coordinates start at offset 5.
+                            // The type 0x20000001 indicates Point with SRID.
+
+                            const type = view.getUint32(1, littleEndian);
+                            let offset = 5;
+
+                            if ((type & 0x20000000) !== 0) { // Has SRID flag
+                                offset += 4; // Skip SRID
+                            }
+
+                            const x = view.getFloat64(offset, littleEndian);
+                            const y = view.getFloat64(offset + 8, littleEndian);
+
+                            coordinates = [x, y];
+                        } catch (e) {
+                            console.error('Failed to parse WKB hex:', e);
+                        }
+                    }
+                    else {
+                        // Try parsing as JSON string
+                        try {
+                            const parsed = JSON.parse(report.location);
+                            if (parsed.coordinates) {
+                                coordinates = parsed.coordinates;
+                            }
+                        } catch (e) {
+                            console.error('Failed to parse location string:', report.location, e);
+                        }
                     }
                 }
             }
 
             if (coordinates && Array.isArray(coordinates) && coordinates.length === 2) {
-                new mapboxgl.Marker(el)
+                const marker = new mapboxgl.Marker(el)
                     .setLngLat(coordinates as [number, number])
                     .setPopup(popup)
                     .addTo(map.current!);
+                markers.current.push(marker);
             }
         });
     }, [reports]);
@@ -139,14 +232,19 @@ export default function SmartMap() {
                             <X className="h-6 w-6" />
                         </button>
                         <h2 className="mb-4 text-xl font-bold text-white">New Report</h2>
-                        <CameraView onPhotoTaken={(file) => {
-                            console.log('Photo taken:', file);
-                            // Optionally close modal here, or let CameraView handle the flow
-                            // setIsScanOpen(false); 
-                        }} />
+                        <CameraView
+                            onPhotoTaken={(file) => {
+                                console.log('Photo taken:', file);
+                            }}
+                            onClose={() => {
+                                setIsScanOpen(false);
+                            }}
+                        />
                     </div>
                 </div>
             )}
+
+
         </div>
     );
 }

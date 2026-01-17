@@ -2,21 +2,24 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Camera, Upload } from 'lucide-react';
+import { Camera, Upload, Check } from 'lucide-react';
 // Ensure correct import path using the alias defined in tsconfig.json
 import { createClient } from '@/utils/supabase/client';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { AnalyzeResponse } from '@/types';
 
 interface CameraViewProps {
   onPhotoTaken: (file: File) => void;
+  onClose?: () => void;
 }
 
-const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken }) => {
+const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken, onClose }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [analysisResult, setAnalysisResult] = useState<AnalyzeResponse['data'] | null>(null);
   const supabase = createClient();
   const router = useRouter();
 
@@ -105,11 +108,11 @@ const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken }) => {
             body: JSON.stringify({ imageUrl, lat: latitude, long: longitude }),
           });
 
-          const result = await analyzeResponse.json();
+          const result: AnalyzeResponse = await analyzeResponse.json();
 
-          if (result.success) {
-            toast.success(`Report Submitted! Identified: ${result.data?.species_name}`);
-            router.push('/map'); // Redirect to map page on success
+          if (result.success && result.data) {
+            toast.success(`Report Submitted! Identified: ${result.data.species_name}`);
+            setAnalysisResult(result.data);
           } else {
             toast.error(`Analysis failed: ${result.error}`);
           }
@@ -130,6 +133,47 @@ const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken }) => {
     // Removed the finally block to prevent premature resetting of isLoading, as geolocation
     // is an asynchronous callback that would not be awaited by the try-catch-finally.
   };
+
+  if (analysisResult) {
+    return (
+      <div className="flex flex-col items-center justify-center p-4 space-y-4 animate-in fade-in zoom-in duration-300">
+        <div className="bg-emerald-500/10 p-4 rounded-full">
+          <Check className="w-12 h-12 text-emerald-500" />
+        </div>
+        <h2 className="text-2xl font-bold text-white">{analysisResult.species_name}</h2>
+
+        <div className="w-full space-y-3 bg-zinc-800/50 p-4 rounded-xl border border-zinc-700">
+          <div className="flex justify-between items-center">
+            <span className="text-zinc-400">Invasive Status</span>
+            <span className={`font-semibold ${analysisResult.is_invasive ? 'text-red-400' : 'text-emerald-400'}`}>
+              {analysisResult.is_invasive ? 'Invasive' : 'Native/Non-invasive'}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-zinc-400">Hazard Rating</span>
+            <span className={`font-semibold capitalize ${analysisResult.hazard_rating === 'critical' || analysisResult.hazard_rating === 'high' ? 'text-red-500' :
+                analysisResult.hazard_rating === 'medium' ? 'text-orange-400' : 'text-emerald-400'
+              }`}>
+              {analysisResult.hazard_rating}
+            </span>
+          </div>
+          <div className="pt-2 border-t border-zinc-700">
+            <p className="text-sm text-zinc-300 leading-relaxed">{analysisResult.description}</p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => {
+            if (onClose) onClose();
+            else router.push('/map');
+          }}
+          className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold transition-colors shadow-lg shadow-emerald-900/20"
+        >
+          Done
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center p-4">
