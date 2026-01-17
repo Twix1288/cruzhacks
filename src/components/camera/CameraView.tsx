@@ -2,12 +2,13 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Camera, Upload, Check } from 'lucide-react';
+import { Camera, Upload, Check, X, Scan, Zap } from 'lucide-react';
 // Ensure correct import path using the alias defined in tsconfig.json
 import { createClient } from '@/utils/supabase/client';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { AnalyzeResponse } from '@/types';
+import { cn } from '@/utils/cn';
 
 interface CameraViewProps {
   onPhotoTaken: (file: File) => void;
@@ -130,35 +131,46 @@ const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken, onClose }) => {
       toast.error(`Upload failed: ${message}`);
       setIsLoading(false); // Reset loading state on upload error
     }
-    // Removed the finally block to prevent premature resetting of isLoading, as geolocation
-    // is an asynchronous callback that would not be awaited by the try-catch-finally.
   };
 
   if (analysisResult) {
     return (
-      <div className="flex flex-col items-center justify-center p-4 space-y-4 animate-in fade-in zoom-in duration-300">
-        <div className="bg-emerald-500/10 p-4 rounded-full">
-          <Check className="w-12 h-12 text-emerald-500" />
+      <div className="w-full flex flex-col items-center justify-center p-6 space-y-6 animate-in fade-in zoom-in duration-300">
+        <div className="relative">
+          <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full" />
+          <div className="bg-gradient-to-br from-emerald-400 to-emerald-600 p-4 rounded-full shadow-xl relative z-10">
+            <Check className="w-10 h-10 text-white" />
+          </div>
         </div>
-        <h2 className="text-2xl font-bold text-white">{analysisResult.species_name}</h2>
 
-        <div className="w-full space-y-3 bg-zinc-800/50 p-4 rounded-xl border border-zinc-700">
-          <div className="flex justify-between items-center">
-            <span className="text-zinc-400">Invasive Status</span>
-            <span className={`font-semibold ${analysisResult.is_invasive ? 'text-red-400' : 'text-emerald-400'}`}>
-              {analysisResult.is_invasive ? 'Invasive' : 'Native/Non-invasive'}
+        <h2 className="text-3xl font-bold text-white text-center font-sans tracking-tight">
+          {analysisResult.species_name}
+        </h2>
+
+        <div className="w-full space-y-4 bg-zinc-900/60 backdrop-blur-md p-6 rounded-2xl border border-zinc-700/50 shadow-2xl">
+          <div className="flex justify-between items-center pb-3 border-b border-zinc-700/50">
+            <span className="text-zinc-400 text-sm font-medium uppercase tracking-wider">Status</span>
+            <span className={cn("px-3 py-1 rounded-full text-xs font-bold",
+              analysisResult.is_invasive ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
+            )}>
+              {analysisResult.is_invasive ? 'INVASIVE' : 'NATIVE'}
             </span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-zinc-400">Hazard Rating</span>
-            <span className={`font-semibold capitalize ${analysisResult.hazard_rating === 'critical' || analysisResult.hazard_rating === 'high' ? 'text-red-500' :
+
+          <div className="flex justify-between items-center pb-3 border-b border-zinc-700/50">
+            <span className="text-zinc-400 text-sm font-medium uppercase tracking-wider">Hazard Level</span>
+            <span className={cn("font-bold capitalize",
+              analysisResult.hazard_rating === 'critical' || analysisResult.hazard_rating === 'high' ? 'text-red-500' :
                 analysisResult.hazard_rating === 'medium' ? 'text-orange-400' : 'text-emerald-400'
-              }`}>
+            )}>
               {analysisResult.hazard_rating}
             </span>
           </div>
-          <div className="pt-2 border-t border-zinc-700">
-            <p className="text-sm text-zinc-300 leading-relaxed">{analysisResult.description}</p>
+
+          <div className="pt-2">
+            <p className="text-sm text-zinc-300 leading-relaxed font-light">
+              {analysisResult.description}
+            </p>
           </div>
         </div>
 
@@ -167,16 +179,16 @@ const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken, onClose }) => {
             if (onClose) onClose();
             else router.push('/map');
           }}
-          className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold transition-colors shadow-lg shadow-emerald-900/20"
+          className="w-full py-4 bg-white hover:bg-zinc-200 text-black rounded-xl font-bold transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95"
         >
-          Done
+          Return to Map
         </button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center p-4">
+    <div className="w-full h-full flex flex-col items-center relative overflow-hidden bg-black rounded-2xl">
       <input
         type="file"
         accept="image/*"
@@ -184,50 +196,90 @@ const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken, onClose }) => {
         hidden
         ref={fileInputRef}
         onChange={handleFileChange}
-        disabled={isLoading} // Disable input while loading
+        disabled={isLoading}
       />
 
-      {!selectedImageUrl ? (
-        <button
-          onClick={triggerFileInput}
-          className="flex items-center justify-center p-4 bg-blue-500 text-white rounded-full shadow-lg"
-          disabled={isLoading} // Disable button while loading
-        >
-          <Camera size={24} className="mr-2" />
-          Take Photo
-        </button>
-      ) : (
-        <div className="relative w-full max-w-md">
-          <img src={selectedImageUrl} alt="Selected" className="w-full h-auto rounded-lg shadow-md" />
+      {/* Camera Viewport / Preview */}
+      <div className="relative w-full aspect-[4/5] bg-zinc-900 overflow-hidden group">
+
+        {/* Grid Overlay */}
+        <div className="absolute inset-0 z-10 opacity-20 pointer-events-none"
+          style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '40px 40px' }}
+        />
+
+        {/* Scanner Brackets */}
+        <div className="absolute top-4 left-4 w-12 h-12 border-t-2 border-l-2 border-emerald-500 z-20" />
+        <div className="absolute top-4 right-4 w-12 h-12 border-t-2 border-r-2 border-emerald-500 z-20" />
+        <div className="absolute bottom-4 left-4 w-12 h-12 border-b-2 border-l-2 border-emerald-500 z-20" />
+        <div className="absolute bottom-4 right-4 w-12 h-12 border-b-2 border-r-2 border-emerald-500 z-20" />
+
+        {/* Scanning Line Animation */}
+        {!selectedImageUrl && !isLoading && (
+          <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.8)] z-20 animate-[scan_3s_ease-in-out_infinite]" />
+        )}
+
+        {selectedImageUrl ? (
+          <img src={selectedImageUrl} alt="Selected" className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-zinc-600">
+            <Scan className="w-16 h-16 opacity-50" />
+          </div>
+        )}
+
+        {/* Overlay Actions */}
+        {selectedImageUrl && (
           <button
             onClick={() => {
               setSelectedFile(null);
               setSelectedImageUrl(null);
-              // When clearing the selected image, ensure loading state is also reset if it was active.
               setIsLoading(false);
             }}
-            className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full"
-            disabled={isLoading} // Disable button while loading
+            className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md text-white rounded-full hover:bg-red-500/80 transition-colors z-30"
           >
-            X
+            <X size={20} />
           </button>
-          <button
-            onClick={triggerFileInput}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center justify-center p-3 bg-green-500 text-white rounded-full shadow-lg"
-            disabled={isLoading} // Disable button while loading
-          >
-            <Camera size={20} className="mr-2" />
-            Retake Photo
-          </button>
-          <button
-            onClick={uploadPhoto}
-            className="mt-4 flex items-center justify-center p-3 bg-purple-600 text-white rounded-full shadow-lg w-full"
-            disabled={isLoading} // Disable button while loading
-          >
-            {isLoading ? 'Analyzing...' : <><Upload size={20} className="mr-2" /> Upload and Analyze</>}
-          </button>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Controls */}
+      <div className="flex-1 w-full bg-zinc-950 p-6 flex flex-col items-center justify-center gap-6">
+
+        {isLoading ? (
+          <div className="flex flex-col items-center animate-pulse">
+            <div className="w-16 h-16 rounded-full border-4 border-emerald-500/30 border-t-emerald-500 animate-spin mb-4" />
+            <p className="text-emerald-400 font-medium tracking-widest text-sm uppercase">Analyzing Biological Signature...</p>
+          </div>
+        ) : (
+          <>
+            {!selectedImageUrl ? (
+              <button
+                onClick={triggerFileInput}
+                className="group relative flex items-center justify-center w-20 h-20 rounded-full bg-white transition-all hover:scale-110 active:scale-95"
+              >
+                <div className="absolute inset-0 rounded-full border-2 border-transparent group-hover:border-emerald-500 transition-all opacity-0 group-hover:opacity-100 scale-125" />
+                <Camera size={32} className="text-black group-hover:text-emerald-600 transition-colors" />
+              </button>
+            ) : (
+              <div className="flex items-center gap-4 w-full">
+                <button
+                  onClick={triggerFileInput}
+                  className="flex-1 py-4 rounded-xl bg-zinc-900 text-white font-medium hover:bg-zinc-800 transition-colors"
+                >
+                  Retake
+                </button>
+                <button
+                  onClick={uploadPhoto}
+                  className="flex-[2] py-4 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2"
+                >
+                  <Zap size={18} className="fill-white" />
+                  Analyze Report
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
     </div>
   );
 };

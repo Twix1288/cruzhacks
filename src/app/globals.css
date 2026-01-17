@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Premium Dark Forest Palette */
+  --color-forest-black: #050505;
+  --color-deep-zinc: #09090b;
+  --color-emerald-glow: #10b981;
+  --color-neon-orange: #f97316;
+  --color-glass-border: rgba(255, 255, 255, 0.08);
+  /* 0.08 for subtle border */
+  --color-glass-surface: rgba(24, 24, 27, 0.6);
+  /* zinc-900 with opacity */
+
+  --background: #050505;
+  --foreground: #ededed;
+
+  --font-sans: var(--font-inter);
+  /* Assuming you will add Inter font configuration in layout */
 }
 
 @theme inline {
@@ -10,6 +23,12 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Extending theme with custom colors */
+  --color-forest: var(--color-forest-black);
+  --color-surface: var(--color-glass-surface);
+  --color-primary: var(--color-emerald-glow);
+  --color-accent: var(--color-neon-orange);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,17 +41,65 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+  /* Prevent horizontal scroll from animations */
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  background: var(--color-glass-surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-glass-border);
+}
+
+/* Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.5s ease-out forwards;
 }
 
 /* Mapbox Marker Styles */
 .marker {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   cursor: pointer;
   background-size: cover;
   border: 2px solid white;
+  transition: transform 0.2s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+}
+
+.marker:hover {
+  transform: scale(1.2);
+  z-index: 10;
 }
 
 .marker-red {
@@ -63,5 +130,25 @@ body {
   100% {
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+@keyframes scan {
+  0% {
+    top: 0%;
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  90% {
+    opacity: 1;
+  }
+
+  100% {
+    top: 100%;
+    opacity: 0;
   }
 }
