@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:api": "node scripts/verify-google-api.js",
+    "check": "npm run lint && npx tsc --noEmit && npm run verify:api"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.10",
