@@ -13,9 +13,10 @@ interface SmartMapProps {
     onReportsChange?: (reports: Report[]) => void
     userRole?: UserRole | null
     userId?: string | null
+    onCameraOpenChange?: (isOpen: boolean) => void
 }
 
-export default function SmartMap({ className, onReportsChange, userRole: propUserRole, userId: propUserId }: SmartMapProps) {
+export default function SmartMap({ className, onReportsChange, userRole: propUserRole, userId: propUserId, onCameraOpenChange }: SmartMapProps) {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<mapboxgl.Map | null>(null);
     const markers = useRef<mapboxgl.Marker[]>([]);
@@ -23,6 +24,13 @@ export default function SmartMap({ className, onReportsChange, userRole: propUse
     const [isScanOpen, setIsScanOpen] = useState(false);
     const [userRole, setUserRole] = useState<UserRole | null>(propUserRole || null);
     const [userId, setUserId] = useState<string | null>(propUserId || null);
+
+    // Notify parent when camera opens/closes
+    useEffect(() => {
+        if (onCameraOpenChange) {
+            onCameraOpenChange(isScanOpen);
+        }
+    }, [isScanOpen, onCameraOpenChange]);
 
     useEffect(() => {
         // If props are provided, use them; otherwise fetch
@@ -362,8 +370,8 @@ export default function SmartMap({ className, onReportsChange, userRole: propUse
     }, [reports]);
 
     return (
-        <div className={className || "w-full h-full relative"}>
-            <div ref={mapContainer} className="w-full h-full rounded-lg overflow-hidden" />
+        <div className={className || "w-full h-full relative"} style={{ minHeight: 0 }}>
+            <div ref={mapContainer} className="w-full h-full rounded-lg overflow-hidden" style={{ minHeight: '400px' }} />
 
             {/* Floating Action Button */}
             <button
@@ -374,25 +382,27 @@ export default function SmartMap({ className, onReportsChange, userRole: propUse
                 <Camera className="h-6 w-6" />
             </button>
 
-            {/* Camera Modal */}
+            {/* Camera Modal - Expanded */}
             {isScanOpen && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                    <div className="relative w-full max-w-lg rounded-2xl bg-zinc-900 p-6 shadow-2xl border border-zinc-800">
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+                    <div className="relative w-full h-full max-w-4xl max-h-[90vh] rounded-2xl bg-zinc-900 p-6 shadow-2xl border border-zinc-800 flex flex-col">
                         <button
                             onClick={() => setIsScanOpen(false)}
-                            className="absolute right-4 top-4 text-zinc-400 hover:text-white"
+                            className="absolute right-4 top-4 z-10 text-zinc-400 hover:text-white transition-colors p-2 rounded-full hover:bg-zinc-800"
                         >
                             <X className="h-6 w-6" />
                         </button>
                         <h2 className="mb-4 text-xl font-bold text-white">New Report</h2>
-                        <CameraView
-                            onPhotoTaken={(file) => {
-                                console.log('Photo taken:', file);
-                            }}
-                            onClose={() => {
-                                setIsScanOpen(false);
-                            }}
-                        />
+                        <div className="flex-1 min-h-0 overflow-auto">
+                            <CameraView
+                                onPhotoTaken={(file) => {
+                                    console.log('Photo taken:', file);
+                                }}
+                                onClose={() => {
+                                    setIsScanOpen(false);
+                                }}
+                            />
+                        </div>
                     </div>
                 </div>
             )}

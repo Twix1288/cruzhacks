@@ -13,6 +13,7 @@ import { GradientText } from '@/components/ui/GradientText'
 export default function MapPage() {
     const [userRole, setUserRole] = useState<UserRole | null>(null)
     const [userId, setUserId] = useState<string | null>(null)
+    const [isCameraOpen, setIsCameraOpen] = useState(false)
 
     useEffect(() => {
         const fetchUserInfo = async () => {
@@ -53,29 +54,35 @@ export default function MapPage() {
                 </p>
             </header>
 
-            {/* Main Content - Split Layout */}
-            <div className="flex-1 flex flex-col lg:flex-row gap-6 p-6 relative z-10">
-                {/* Map Section - Left Half */}
-                <div className="flex-1 min-h-[400px] lg:min-h-0">
-                    <AnimatedBorder variant="glow" color="emerald" className="h-full">
-                        <div className="h-full bg-zinc-900/50 rounded-lg overflow-hidden">
+            {/* Main Content - Vertically Stacked Layout */}
+            <div className="flex flex-col gap-6 p-6 relative z-10">
+                {/* Map Section - Fixed larger height */}
+                <div 
+                    className={`transition-all duration-300`}
+                    style={{ height: isCameraOpen ? '900px' : '800px' }}
+                >
+                    <AnimatedBorder variant="glow" color="emerald" className="h-full w-full">
+                        <div className="h-full w-full bg-zinc-900/50 rounded-lg overflow-hidden">
                             <SmartMap 
                                 className="h-full w-full"
                                 userRole={userRole}
                                 userId={userId}
+                                onCameraOpenChange={setIsCameraOpen}
                             />
                         </div>
                     </AnimatedBorder>
                 </div>
 
-                {/* Reports List Section - Right Half */}
-                <div className="flex-1 min-h-[400px] lg:min-h-0">
-                    <AnimatedBorder variant="gradient" color="purple" className="h-full">
-                        <div className="h-full bg-zinc-900/50 rounded-lg overflow-hidden">
-                            <ReportsList userRole={userRole} userId={userId} />
-                        </div>
-                    </AnimatedBorder>
-                </div>
+                {/* Reports List Section - Hides when camera is open */}
+                {!isCameraOpen && (
+                    <div className="h-[500px]">
+                        <AnimatedBorder variant="gradient" color="purple" className="h-full w-full">
+                            <div className="h-full w-full bg-zinc-900/50 rounded-lg overflow-hidden">
+                                <ReportsList userRole={userRole} userId={userId} />
+                            </div>
+                        </AnimatedBorder>
+                    </div>
+                )}
             </div>
             
             {/* Bubble Menu Navigation */}

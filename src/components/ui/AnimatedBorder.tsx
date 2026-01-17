@@ -73,14 +73,14 @@ export function AnimatedBorder({
     return (
       <div 
         onClick={onClick}
-        className={cn('relative rounded-xl overflow-hidden transition-all duration-300 p-[2px]', onClick && 'cursor-pointer', className)}
+        className={cn('relative rounded-xl overflow-hidden transition-all duration-300 p-[2px] flex flex-col', onClick && 'cursor-pointer', className)}
       >
         <div className={cn(
           'absolute inset-0 bg-gradient-to-r rounded-xl',
           colorMap[color].gradient,
           'animate-gradient-shift'
         )} />
-        <div className="relative bg-zinc-900/95 backdrop-blur-sm rounded-lg h-full w-full">
+        <div className="relative bg-zinc-900/95 backdrop-blur-sm rounded-lg flex-1 min-h-0">
           {children}
         </div>
       </div>
