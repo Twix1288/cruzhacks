@@ -1,0 +1,192 @@
+
+'use client';
+
+import React, { useRef, useState } from 'react';
+import { Camera, Upload } from 'lucide-react';
+// Ensure correct import path using the alias defined in tsconfig.json
+import { createClient } from '@/src/utils/supabase/client';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+
+interface CameraViewProps {
+  onPhotoTaken: (file: File) => void;
+}
+
+const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const supabase = createClient();
+  const router = useRouter();
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Client-side validation for file type and size to prevent invalid uploads.
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        toast.error('Only JPEG, PNG, and WebP images are allowed.');
+        event.target.value = ''; // Clear the input
+        return;
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error('Image size must be less than 5MB.');
+        event.target.value = ''; // Clear the input
+        return;
+      }
+
+      setSelectedFile(file);
+      // Create a URL for the selected file to display a preview.
+      setSelectedImageUrl(URL.createObjectURL(file));
+      onPhotoTaken(file);
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
+
+  const uploadPhoto = async () => {
+    if (!selectedFile) {
+      toast.error('No photo selected.');
+      return;
+    }
+
+    setIsLoading(true); // Start loading state to prevent double submission
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('You must be logged in to upload photos.');
+        router.push('/login');
+        setIsLoading(false); // Reset loading state on auth error
+        return;
+      }
+
+      // Extract file extension dynamically to avoid hardcoding and support various image types.
+      const fileExtension = selectedFile.name.split('.').pop();
+      // Use a more web-friendly timestamp format (replace colons) to avoid potential file path issues.
+      const timestamp = new Date().toISOString().replace(/:/g, '-');
+      const filePath = `${user.id}/${timestamp}.${fileExtension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('reports')
+        .upload(filePath, selectedFile, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('reports')
+        .getPublicUrl(filePath);
+
+      const imageUrl = publicUrlData.publicUrl;
+
+      // Geolocation is a callback-based API. The isLoading state should not be reset
+      // until the geolocation and subsequent analysis are complete or have failed.
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+
+          // Trigger analysis
+          const analyzeResponse = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ imageUrl, lat: latitude, long: longitude }),
+          });
+
+          const result = await analyzeResponse.json();
+
+          if (result.success) {
+            toast.success(`Report Submitted! Identified: ${result.data?.species_name}`);
+            router.push('/map'); // Redirect to map page on success
+          } else {
+            toast.error(`Analysis failed: ${result.error}`);
+          }
+          setIsLoading(false); // Reset loading state after analysis success or failure
+        },
+        (geoError) => {
+          toast.error(`Failed to get location: ${geoError.message}`);
+          setIsLoading(false); // Reset loading state if geolocation fails
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // Add options for better geolocation
+      );
+
+    } catch (error: any) {
+      toast.error(`Upload failed: ${error.message}`);
+      setIsLoading(false); // Reset loading state on upload error
+    }
+    // Removed the finally block to prevent premature resetting of isLoading, as geolocation
+    // is an asynchronous callback that would not be awaited by the try-catch-finally.
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center p-4">
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        disabled={isLoading} // Disable input while loading
+      />
+      
+      {!selectedImageUrl ? (
+        <button
+          onClick={triggerFileInput}
+          className="flex items-center justify-center p-4 bg-blue-500 text-white rounded-full shadow-lg"
+          disabled={isLoading} // Disable button while loading
+        >
+          <Camera size={24} className="mr-2" />
+          Take Photo
+        </button>
+      ) : (
+        <div className="relative w-full max-w-md">
+          <img src={selectedImageUrl} alt="Selected" className="w-full h-auto rounded-lg shadow-md" />
+          <button
+            onClick={() => {
+              setSelectedFile(null);
+              setSelectedImageUrl(null);
+              // When clearing the selected image, ensure loading state is also reset if it was active.
+              setIsLoading(false);
+            }}
+            className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full"
+            disabled={isLoading} // Disable button while loading
+          >
+            X
+          </button>
+          <button
+            onClick={triggerFileInput}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center justify-center p-3 bg-green-500 text-white rounded-full shadow-lg"
+            disabled={isLoading} // Disable button while loading
+          >
+            <Camera size={20} className="mr-2" />
+            Retake Photo
+          </button>
+          <button
+            onClick={uploadPhoto}
+            className="mt-4 flex items-center justify-center p-3 bg-purple-600 text-white rounded-full shadow-lg w-full"
+            disabled={isLoading} // Disable button while loading
+          >
+            {isLoading ? 'Analyzing...' : <><Upload size={20} className="mr-2" /> Upload and Analyze</>}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default CameraView;
+
+
