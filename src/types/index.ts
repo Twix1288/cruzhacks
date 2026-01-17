@@ -1,4 +1,4 @@
-export type HazardLevel = 'safe' | 'low' | 'medium' | 'high' | 'critical';
+export type HazardLevel = 'safe' | 'low' | 'medium' | 'high' | 'critical' | 'unknown';
 export type ReportStatus = 'pending' | 'verified' | 'resolved';
 export type UserRole = 'scout' | 'ranger';
 export interface UserProfile {
@@ -40,4 +40,11 @@ export interface AnalyzeResponse {
         confidence: number;
     };
     error?: string;
+}
+
+export interface Achievement {
+    id: string;
+    user_id: string;
+    achievement_key: string;
+    unlocked_at: string;
 }

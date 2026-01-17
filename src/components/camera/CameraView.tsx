@@ -160,8 +160,13 @@ const CameraView: React.FC<CameraViewProps> = ({ onPhotoTaken, onClose }) => {
           <div className="flex justify-between items-center pb-3 border-b border-zinc-700/50">
             <span className="text-zinc-400 text-sm font-medium uppercase tracking-wider">Hazard Level</span>
             <span className={cn("font-bold capitalize",
-              analysisResult.hazard_rating === 'critical' || analysisResult.hazard_rating === 'high' ? 'text-red-500' :
-                analysisResult.hazard_rating === 'medium' ? 'text-orange-400' : 'text-emerald-400'
+              analysisResult.hazard_rating === 'critical' ? 'text-red-600' :
+              analysisResult.hazard_rating === 'high' ? 'text-red-500' :
+              analysisResult.hazard_rating === 'medium' ? 'text-orange-500' :
+              analysisResult.hazard_rating === 'low' ? 'text-yellow-500' :
+              analysisResult.hazard_rating === 'safe' ? 'text-green-500' :
+              analysisResult.hazard_rating === 'unknown' ? 'text-gray-500' :
+              'text-emerald-400'
             )}>
               {analysisResult.hazard_rating}
             </span>

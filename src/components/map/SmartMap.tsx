@@ -4,34 +4,112 @@ import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { createClient } from '@/utils/supabase/client';
-import { Report } from '@/types';
+import { Report, UserRole } from '@/types';
 import { Camera, X } from 'lucide-react';
 import CameraView from '@/components/camera/CameraView';
 
-export default function SmartMap() {
+interface SmartMapProps {
+    className?: string
+    onReportsChange?: (reports: Report[]) => void
+    userRole?: UserRole | null
+    userId?: string | null
+}
+
+export default function SmartMap({ className, onReportsChange, userRole: propUserRole, userId: propUserId }: SmartMapProps) {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<mapboxgl.Map | null>(null);
     const markers = useRef<mapboxgl.Marker[]>([]);
     const [reports, setReports] = useState<Report[]>([]);
     const [isScanOpen, setIsScanOpen] = useState(false);
+    const [userRole, setUserRole] = useState<UserRole | null>(propUserRole || null);
+    const [userId, setUserId] = useState<string | null>(propUserId || null);
+
+    useEffect(() => {
+        // If props are provided, use them; otherwise fetch
+        if (propUserRole !== undefined) {
+            setUserRole(propUserRole)
+        }
+        if (propUserId !== undefined) {
+            setUserId(propUserId)
+        }
+        
+        if (propUserRole === undefined || propUserId === undefined) {
+            const fetchUserRole = async () => {
+                const supabase = createClient();
+                const { data: { user } } = await supabase.auth.getUser();
+                
+                if (user) {
+                    setUserId(user.id);
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('role')
+                        .eq('id', user.id)
+                        .single();
+                    
+                    if (profile) {
+                        setUserRole(profile.role as UserRole);
+                    }
+                }
+            };
+
+            fetchUserRole();
+        }
+    }, [propUserRole, propUserId]);
 
     useEffect(() => {
         const fetchReports = async () => {
             const supabase = createClient();
-            const { data, error } = await supabase.from('reports').select('*');
+            
+            // RLS policies will automatically filter based on user role:
+            // - Scouts: Only see their own reports (enforced by RLS)
+            // - Rangers: Only see medium/high/critical hazard invasive species (enforced by RLS)
+            const { data, error } = await supabase
+                .from('reports')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
             if (error) {
                 console.error('Error fetching reports:', error);
             } else {
+                console.log(`Fetched ${data?.length || 0} reports for ${userRole || 'unknown'} role`);
                 console.log('Reports fetched:', data);
-                setReports(data || []);
+                
+                // Additional client-side filtering as backup (RLS should handle this, but we verify)
+                let filteredReports = data || [];
+                
+                if (userRole === 'scout' && userId) {
+                    // Scouts only see their own reports
+                    filteredReports = filteredReports.filter(r => r.user_id === userId);
+                } else if (userRole === 'ranger') {
+                    // Rangers only see medium/high/critical hazard invasive species
+                    filteredReports = filteredReports.filter(r => 
+                        r.is_invasive === true && 
+                        ['medium', 'high', 'critical'].includes(r.hazard_rating)
+                    );
+                }
+                
+                // Filter out 'unknown' reports for rangers (they only see identified threats)
+                if (userRole === 'ranger') {
+                    filteredReports = filteredReports.filter(r => r.hazard_rating !== 'unknown');
+                }
+                
+                setReports(filteredReports);
+                if (onReportsChange) {
+                    onReportsChange(filteredReports);
+                }
             }
         };
 
-        fetchReports();
+        // Only fetch reports if we have user info
+        if (userRole !== null) {
+            fetchReports();
+        }
 
-        // Set up Realtime subscription
-        const supabase = createClient();
-        const channel = supabase
+        // Set up Realtime subscription (only if we have user role)
+        if (userRole === null) return;
+
+        const supabaseRealtime = createClient();
+        const channel = supabaseRealtime
             .channel('reports_channel')
             .on(
                 'postgres_changes',
@@ -43,10 +121,26 @@ export default function SmartMap() {
                 (payload) => {
                     console.log('🔔 REALTIME EVENT RECEIVED:', payload);
                     const newReport = payload.new as Report;
-                    setReports((prev) => {
-                        console.log('Adding new report to state:', newReport);
-                        return [...prev, newReport];
-                    });
+                    
+                    // Apply role-based filtering to new reports
+                    let shouldAdd = false;
+                    
+                    if (userRole === 'scout' && userId) {
+                        // Scouts only see their own reports
+                        shouldAdd = newReport.user_id === userId;
+                    } else if (userRole === 'ranger') {
+                        // Rangers only see medium/high/critical hazard invasive species (not unknown)
+                        shouldAdd = newReport.is_invasive === true && 
+                                   ['medium', 'high', 'critical'].includes(newReport.hazard_rating) &&
+                                   newReport.hazard_rating !== 'unknown';
+                    }
+                    
+                    if (shouldAdd) {
+                        setReports((prev) => {
+                            console.log('Adding new report to state:', newReport);
+                            return [newReport, ...prev]; // Add to beginning
+                        });
+                    }
                 }
             )
             .subscribe((status) => {
@@ -55,9 +149,9 @@ export default function SmartMap() {
 
         return () => {
             console.log('Cleaning up Realtime subscription');
-            supabase.removeChannel(channel);
+            supabaseRealtime.removeChannel(channel);
         };
-    }, []);
+    }, [userRole, userId]);
 
     useEffect(() => {
         if (map.current || !mapContainer.current) return;
@@ -86,6 +180,21 @@ export default function SmartMap() {
                 showUserHeading: true,
             })
         );
+
+        // Handle map resize when container size changes
+        const resizeObserver = new ResizeObserver(() => {
+            if (map.current) {
+                map.current.resize();
+            }
+        });
+
+        if (mapContainer.current) {
+            resizeObserver.observe(mapContainer.current);
+        }
+
+        return () => {
+            resizeObserver.disconnect();
+        };
     }, []);
 
     useEffect(() => {
@@ -102,21 +211,65 @@ export default function SmartMap() {
             const el = document.createElement('div');
             el.className = 'marker';
 
-            // Determine styling
-            if (report.hazard_rating === 'high' || report.hazard_rating === 'critical') {
-                el.classList.add('marker-red');
-            } else if (report.is_invasive) {
-                el.classList.add('marker-yellow');
-            } else {
-                el.classList.add('marker-blue');
+            // Determine styling based on hazard level (priority: hazard_rating > is_invasive)
+            // All hazard levels get their own color for clear visual distinction
+            switch (report.hazard_rating) {
+                case 'critical':
+                    el.classList.add('marker-critical');
+                    break;
+                case 'high':
+                    el.classList.add('marker-high');
+                    break;
+                case 'medium':
+                    el.classList.add('marker-medium');
+                    break;
+                case 'low':
+                    el.classList.add('marker-low');
+                    break;
+                case 'safe':
+                    el.classList.add('marker-safe');
+                    break;
+                case 'unknown':
+                    el.classList.add('marker-unknown');
+                    break;
+                default:
+                    // Fallback: use invasive status if hazard not set
+                    el.classList.add(report.is_invasive ? 'marker-yellow' : 'marker-blue');
             }
 
-            // Create Popup
+            // Determine hazard level color for popup
+            const getHazardColor = (rating: string) => {
+                switch (rating) {
+                    case 'critical': return 'text-red-600';
+                    case 'high': return 'text-red-500';
+                    case 'medium': return 'text-orange-500';
+                    case 'low': return 'text-yellow-500';
+                    case 'safe': return 'text-green-500';
+                    case 'unknown': return 'text-gray-500';
+                    default: return 'text-gray-400';
+                }
+            };
+
+            // Create Popup with enhanced information
             const popupContent = `
-        <div class="p-2">
-          <h3 class="font-bold text-sm">${report.species_name}</h3>
-          <p class="text-xs text-gray-500 capitalize">${report.hazard_rating}</p>
-          ${report.image_url ? `<img src="${report.image_url}" alt="${report.species_name}" class="mt-1 w-full h-24 object-cover rounded" />` : ''}
+        <div class="p-3 min-w-[200px]">
+          <h3 class="font-bold text-sm mb-2">${report.species_name}</h3>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-gray-500">Hazard Level:</span>
+            <span class="text-xs font-semibold capitalize ${getHazardColor(report.hazard_rating)}">${report.hazard_rating}</span>
+          </div>
+          ${report.is_invasive ? `
+          <div class="mb-2">
+            <span class="px-2 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400">INVASIVE</span>
+          </div>
+          ` : ''}
+          ${report.confidence_score !== null ? `
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-gray-500">Confidence:</span>
+            <span class="text-xs font-medium">${Math.round(report.confidence_score * 100)}%</span>
+          </div>
+          ` : ''}
+          ${report.image_url ? `<img src="${report.image_url}" alt="${report.species_name}" class="mt-2 w-full h-24 object-cover rounded" />` : ''}
         </div>
       `;
 
@@ -209,8 +362,8 @@ export default function SmartMap() {
     }, [reports]);
 
     return (
-        <div className="w-full h-[calc(100vh-64px)] relative">
-            <div ref={mapContainer} className="w-full h-full" />
+        <div className={className || "w-full h-full relative"}>
+            <div ref={mapContainer} className="w-full h-full rounded-lg overflow-hidden" />
 
             {/* Floating Action Button */}
             <button

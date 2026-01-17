@@ -7,6 +7,11 @@ import { toast } from 'sonner'
 import { Loader2, Shield, TreePine, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/utils/cn'
+import BubbleMenu from '@/components/ui/BubbleMenu'
+import { TypeText } from '@/components/ui/TypeText'
+import { AnimatedBackground } from '@/components/ui/AnimatedBackground'
+import { AnimatedBorder } from '@/components/ui/AnimatedBorder'
+import { GradientText } from '@/components/ui/GradientText'
 
 export default function LoginPage() {
     const router = useRouter()
@@ -45,7 +50,8 @@ export default function LoginPage() {
     return (
         <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden bg-black selection:bg-emerald-500/30">
 
-            {/* Ambient Background */}
+            {/* Enhanced Ambient Background */}
+            <AnimatedBackground variant="aurora" intensity={0.5} />
             <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full bg-emerald-900/10 blur-[100px] animate-pulse" style={{ animationDuration: '4s' }} />
                 <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-zinc-900/40 blur-[100px]" />
@@ -59,8 +65,10 @@ export default function LoginPage() {
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-lg shadow-emerald-900/20 mb-6 transform hover:scale-105 transition-transform duration-500">
                         {isLogin ? <TreePine className="text-white h-8 w-8" /> : (role === 'scout' ? <TreePine className="text-white h-8 w-8" /> : <Shield className="text-white h-8 w-8" />)}
                     </div>
-                    <h1 className="text-3xl font-bold tracking-tight text-white mb-2">
-                        {isLogin ? 'Welcome Back' : 'Initialize Session'}
+                    <h1 className="text-3xl font-bold tracking-tight mb-2">
+                        <GradientText variant="emerald">
+                            {isLogin ? 'Welcome Back' : 'Initialize Session'}
+                        </GradientText>
                     </h1>
                     <p className="text-zinc-400 text-sm">
                         {isLogin ? 'Enter your credentials to access the grid.' : 'Create an identity to begin monitoring.'}
@@ -205,6 +213,15 @@ export default function LoginPage() {
                 </div>
 
             </Card>
+
+            {/* Bubble Menu Navigation - Minimal menu for unauthenticated users */}
+            <BubbleMenu
+                menuBg="#18181b"
+                menuContentColor="#ffffff"
+                items={[
+                    { label: 'Home', href: '/', rotation: -10, hoverStyles: { bgColor: '#10b981', textColor: '#000' } },
+                ]}
+            />
         </div>
     )
 }

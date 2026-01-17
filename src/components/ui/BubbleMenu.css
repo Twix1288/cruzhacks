@@ -1,12 +1,11 @@
 .bubble-menu {
-  left: 0;
-  right: 0;
+  right: 2em;
   top: 2em;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-  padding: 0 2em;
+  padding: 0;
   pointer-events: none;
   z-index: 99;
 }

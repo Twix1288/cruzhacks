@@ -42,9 +42,9 @@ $$ language sql security definer;
 create policy "Students see own reports" on public.reports for select 
 using ( auth.uid() = user_id );
 
--- POLICY: Rangers see ONLY threats (Invasive OR High Hazard)
+-- POLICY: Rangers see medium/high hazard invasive species from everyone
 create policy "Rangers see threats" on public.reports for select 
-using ( is_ranger() = true AND (hazard_rating IN ('high', 'critical') OR is_invasive = true) );
+using ( is_ranger() = true AND is_invasive = true AND hazard_rating IN ('medium', 'high', 'critical') );
 
 -- POLICY: Universal Upload
 create policy "Universal Insert" on public.reports for insert 

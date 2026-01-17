@@ -173,12 +173,6 @@ export default function BubbleMenu({
     return (
         <>
             <nav className={containerClassName} style={style} aria-label="Main navigation">
-                <div className="bubble logo-bubble" aria-label="Logo" style={{ background: menuBg }}>
-                    <span className="logo-content font-bold dark:text-black">
-                        {typeof logo === 'string' ? logo : logo}
-                    </span>
-                </div>
-
                 <button
                     type="button"
                     className={`bubble toggle-bubble menu-btn ${isMenuOpen ? 'open' : ''}`}

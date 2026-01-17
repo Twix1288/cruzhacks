@@ -10,11 +10,11 @@ export const runtime = 'edge';
 
 // Zod schema for the AI response
 const analyzeDataSchema = z.object({
-    species_name: z.string().describe('The identified plant or species name'),
-    is_invasive: z.boolean().describe('Whether this species is invasive in California'),
-    hazard_rating: z.enum(['safe', 'low', 'medium', 'high', 'critical']).describe('Fire hazard rating from safe to critical'),
-    description: z.string().describe('Brief description of the species and its characteristics'),
-    confidence: z.number().min(0).max(1).describe('Confidence score from 0.0 to 1.0'),
+    species_name: z.string().describe('The identified plant or species name. Use "Unidentifiable" or "Unknown species" if the image does not contain a recognizable plant/species.'),
+    is_invasive: z.boolean().describe('Whether this species is invasive in California. Set to false if unidentifiable.'),
+    hazard_rating: z.enum(['safe', 'low', 'medium', 'high', 'critical', 'unknown']).describe('Fire hazard rating: safe, low, medium, high, critical, or unknown (use unknown if the image does not contain a plant/species or is unidentifiable)'),
+    description: z.string().describe('Brief description of the species and its characteristics. If unidentifiable, describe what is visible in the image.'),
+    confidence: z.number().min(0).max(1).describe('Confidence score from 0.0 to 1.0. Use lower scores (0.0-0.3) for unidentifiable or unclear images.'),
 });
 
 export async function POST(request: Request) {
@@ -50,13 +50,20 @@ export async function POST(request: Request) {
 
         // AI Analysis using Gemini 1.5 Flash
         const systemPrompt = `You are a Park Ranger with expertise in Santa Cruz, California ecosystems. Analyze the provided image to:
-1. Identify the plant/species name
-2. Determine if it's an invasive species in Santa Cruz, California
-3. Rate the fire hazard level (safe, low, medium, high, or critical)
-4. Provide a brief description of the species and its characteristics
-5. Provide a confidence score from 0.0 to 1.0 for your identification
+1. Identify the plant/species name (use "Unidentifiable" or "Unknown species" if the image does not contain a recognizable plant/species, contains only non-plant objects, or is too unclear to identify)
+2. Determine if it's an invasive species in Santa Cruz, California (set to false if unidentifiable)
+3. Rate the fire hazard level: safe, low, medium, high, critical, or unknown (use "unknown" if the image does not contain a plant/species, is unidentifiable, or contains non-plant objects)
+4. Provide a brief description of what you see in the image
+5. Provide a confidence score from 0.0 to 1.0 for your identification (use lower scores 0.0-0.3 for unidentifiable images)
 
-Be precise and consider the Santa Cruz County invasive weeds list.`;
+IMPORTANT: If the image does not contain a plant/species, is unidentifiable, or contains non-plant objects (animals, buildings, vehicles, etc.), you MUST:
+- Set species_name to "Unidentifiable" or "Unknown species"
+- Set hazard_rating to "unknown"
+- Set is_invasive to false
+- Set confidence to a low value (0.0-0.3)
+- Describe what is actually visible in the image
+
+Be precise and consider the Santa Cruz County invasive weeds list. Only identify actual plant species - do not make up names for unidentifiable objects.`;
 
         const result = await generateObject({
             model: google('gemini-flash-latest'),
