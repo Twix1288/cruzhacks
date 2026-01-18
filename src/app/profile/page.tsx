@@ -1,6 +1,9 @@
-import { createClient } from '@/utils/supabase/server'
+'use client';
+
+import React, { useEffect, useState } from 'react'
+import { createClient } from '@/utils/supabase/client'
 import { redirect } from 'next/navigation'
-import { Award, TrendingUp, Zap, Sparkles, Coins, ArrowLeft, Shield, TreePine, Clock, DollarSign } from 'lucide-react'
+import { Award, TrendingUp, Zap, Sparkles, Coins, ArrowLeft, Shield, TreePine, Clock, DollarSign, AlertTriangle, Check } from 'lucide-react'
 import BubbleMenu from '@/components/ui/BubbleMenu'
 import { Card } from '@/components/ui/Card'
 import Link from 'next/link'
@@ -12,49 +15,131 @@ import { GlowCard } from '@/components/ui/GlowCard'
 import { FloatingCard } from '@/components/ui/FloatingCard'
 import { GradientText } from '@/components/ui/GradientText'
 
-export default async function ProfilePage() {
-  const supabase = await createClient()
+export default function ProfilePage() {
+  const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
+  const [onDuty, setOnDuty] = useState(true)
+  const [achievementsData, setAchievementsData] = useState<any[]>([])
+  const [reportCount, setReportCount] = useState(0)
+  const [invasiveCount, setInvasiveCount] = useState(0)
+  const [activeThreats, setActiveThreats] = useState(0)
+  const [resolvedToday, setResolvedToday] = useState(0)
+  const [resolutionRate, setResolutionRate] = useState(0)
+  const [avgResponseTime, setAvgResponseTime] = useState<string | null>(null)
+  const [isRanger, setIsRanger] = useState(false)
 
-  // 1. Verify Session
-  const { data: { user } } = await supabase.auth.getUser()
+  const supabase = createClient()
 
-  if (!user) {
-    redirect('/login')
+  const fetchReportStats = async (isRanger: boolean) => {
+    if (!user) return
+
+    // Basic report count
+    const { count: reports } = await supabase
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+    setReportCount(reports || 0)
+
+    // Invasive count
+    const { count: invasives } = await supabase
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('is_invasive', true)
+    setInvasiveCount(invasives || 0)
+
+    if (isRanger) {
+      // Active threats (pending reports)
+      const { count: activeCount } = await supabase
+        .from('reports')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending')
+      setActiveThreats(activeCount || 0)
+
+      // Resolved today
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+
+      const { count: resolvedTodayCount } = await supabase
+        .from('reports')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'resolved')
+        .gte('updated_at', today.toISOString())
+        .lt('updated_at', tomorrow.toISOString())
+      setResolvedToday(resolvedTodayCount || 0)
+
+      // Total reports for resolution rate
+      const { count: totalReports } = await supabase
+        .from('reports')
+        .select('*', { count: 'exact', head: true })
+
+      const { count: resolvedReports } = await supabase
+        .from('reports')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'resolved')
+
+      if (totalReports && totalReports > 0) {
+        setResolutionRate(Math.round((resolvedReports || 0) / totalReports * 100))
+      }
+
+      // Average response time - placeholder for now
+      setAvgResponseTime('14m')
+
+    }
   }
 
-  // 2. Fetch Profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
 
-  // Fetch user achievements (handle case where table might not exist)
-  const { data: achievements, error: achievementsError } = await supabase
-    .from('achievements')
-    .select('achievement_key, unlocked_at')
-    .eq('user_id', user.id)
-    .order('unlocked_at', { ascending: false })
-  
-  // If achievements table doesn't exist, use empty array
-  const achievementsData = achievementsError ? [] : (achievements || [])
+  useEffect(() => {
+    const initializeProfile = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
 
-  // Get report count and stats
-  const { count: reportCount } = await supabase
-    .from('reports')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
+      if (!authUser) {
+        redirect('/login')
+        return
+      }
 
-  const { count: invasiveCount } = await supabase
-    .from('reports')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .eq('is_invasive', true)
+      setUser(authUser)
 
-  const isRanger = profile?.role === 'ranger'
+      // Fetch profile
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single()
 
-  // Achievement definitions
-  const achievementDefs: Record<string, { emoji: string; name: string; description: string }> = {
+      setProfile(profileData)
+      setIsRanger(profileData?.role === 'ranger')
+
+      // Fetch achievements
+      const { data: achievements, error: achievementsError } = await supabase
+        .from('achievements')
+        .select('achievement_key, unlocked_at')
+        .eq('user_id', authUser.id)
+        .order('unlocked_at', { ascending: false })
+
+      setAchievementsData(achievementsError ? [] : (achievements || []))
+
+      // Fetch report stats
+      await fetchReportStats(profileData?.role === 'ranger')
+    }
+
+    initializeProfile()
+  }, [])
+
+
+  // Achievement definitions - conditional based on role (computed in component)
+  const achievementDefs = React.useMemo(() => isRanger ? {
+    first_resolution: { emoji: '✅', name: 'First Resolution', description: 'Resolved your 1st threat' },
+    sector_guardian: { emoji: '🛡️', name: 'Sector Guardian', description: 'Managed 10 threats' },
+    crisis_manager: { emoji: '🚨', name: 'Crisis Manager', description: 'Resolved 50 threats' },
+    invasive_eliminator: { emoji: '🎯', name: 'Invasive Eliminator', description: 'Managed invasive species threats' },
+    fire_watch: { emoji: '🔥', name: 'Fire Watch', description: 'Identified critical fire hazard' },
+    efficiency_expert: { emoji: '⚡', name: 'Efficiency Expert', description: 'Maintained 90%+ resolution rate' },
+    veteran_ranger: { emoji: '⭐', name: 'Veteran Ranger', description: '5 years of service' },
+    legend_ranger: { emoji: '👑', name: 'Legend Ranger', description: '1000+ reports resolved' },
+  } : {
     first_sighting: { emoji: '🌱', name: 'First Sighting', description: 'Logged your 1st plant' },
     explorer: { emoji: '🗺️', name: 'Explorer', description: 'Logged 10 plants' },
     veteran_scout: { emoji: '🏅', name: 'Veteran Scout', description: 'Logged 50 plants' },
@@ -63,11 +148,11 @@ export default async function ProfilePage() {
     century_club: { emoji: '💯', name: 'Century Club', description: 'Reached 100 XP' },
     master_scout: { emoji: '⭐', name: 'Master Scout', description: 'Reached 500 XP' },
     legend: { emoji: '👑', name: 'Legend', description: 'Reached 1000 XP' },
-  }
+  }, [isRanger])
 
   const unlockedKeys = new Set(achievementsData.map(a => a.achievement_key))
 
-  // Calculate XP progress
+  // Calculate XP-related values for Scouts
   const xpProgress = Math.min(((profile?.xp_points || 0) / 1000) * 100, 100)
   const currentLevel = Math.floor((profile?.xp_points || 0) / 200) + 1
   const xpForCurrentLevel = (profile?.xp_points || 0) % 200
@@ -90,25 +175,54 @@ export default async function ProfilePage() {
       {/* Main Content */}
       <main className="relative z-10 mx-auto max-w-6xl p-6 pb-32">
         {/* Header */}
-        <header className="mt-12 mb-8 flex items-center gap-4">
-          <Link 
-            href="/"
-            className="p-2 rounded-lg bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors border border-zinc-800"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-          <div>
-            <h1 className="text-4xl md:text-5xl font-bold tracking-tighter">
-              <GradientText variant="emerald">Profile & Stats</GradientText>
-            </h1>
-            <p className="mt-2 text-zinc-400">
-              View your progress, achievements, and rewards
-            </p>
+        <header className={`mt-12 mb-8 flex items-center justify-between gap-4 relative ${onDuty && isRanger ? 'before:absolute before:inset-0 before:bg-emerald-500/10 before:blur-xl before:rounded-lg before:-z-10' : ''}`}>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="p-2 rounded-lg bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors border border-zinc-800"
+            >
+              <ArrowLeft size={20} />
+            </Link>
+            <div>
+              <h1 className="text-4xl md:text-5xl font-bold tracking-tighter">
+                <GradientText variant="emerald">Profile & Stats</GradientText>
+              </h1>
+              <p className="mt-2 text-zinc-400">
+                View your progress, achievements, and rewards
+              </p>
+            </div>
           </div>
+
+          {/* Duty Status Toggle for Rangers */}
+          {isRanger && (
+            <div className="flex flex-col items-end">
+              <span className="text-xs text-zinc-500 uppercase tracking-widest">Duty Status</span>
+              <button
+                onClick={() => setOnDuty(!onDuty)}
+                className={`flex items-center gap-2 font-medium px-3 py-1 rounded-full transition-all ${
+                  onDuty
+                    ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/30'
+                    : 'text-amber-400 bg-amber-500/10 border border-amber-500/30'
+                }`}
+              >
+                <span className={`relative flex h-2 w-2 ${onDuty ? 'animate-pulse' : ''}`}>
+                  {onDuty ? (
+                    <>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </>
+                  ) : (
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  )}
+                </span>
+                {onDuty ? 'Active Duty' : 'Off Duty'}
+              </button>
+            </div>
+          )}
         </header>
 
         {/* Stats Grid with Diverse Border Styles */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           {/* Total Reports - Glow Card */}
           <FloatingCard floatSpeed="slow">
             <GlowCard glowColor="blue" intensity="medium" className="h-full">
@@ -119,7 +233,7 @@ export default async function ProfilePage() {
                   </AnimatedBorder>
                   <span className="text-3xl font-bold">{reportCount || 0}</span>
                 </div>
-                <p className="text-sm text-zinc-400">Total Reports</p>
+                <p className="text-sm text-zinc-400">{isRanger ? 'Threats Managed' : 'Total Reports'}</p>
               </div>
             </GlowCard>
           </FloatingCard>
@@ -134,198 +248,189 @@ export default async function ProfilePage() {
                   </div>
                   <span className="text-3xl font-bold">{invasiveCount || 0}</span>
                 </div>
-                <p className="text-sm text-zinc-400">Invasive Species</p>
+                <p className="text-sm text-zinc-400">{isRanger ? 'Invasives Verified' : 'Invasive Species'}</p>
               </div>
             </AnimatedBorder>
           </FloatingCard>
 
-          {/* Achievements - Gradient Border */}
-          <FloatingCard floatSpeed="slow" className="delay-400">
-            <AnimatedBorder variant="gradient" color="purple" className="h-full">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/30">
-                    <Award className="text-yellow-400" size={24} />
-                  </div>
-                  <span className="text-3xl font-bold">{unlockedKeys.size}</span>
-                </div>
-                <p className="text-sm text-zinc-400">Achievements</p>
-              </div>
-            </AnimatedBorder>
-          </FloatingCard>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* XP & Level Card */}
-          <FloatingCard floatSpeed="medium">
-            <AnimatedBorder variant="gradient" color="emerald" className="h-full">
-              <div className="p-8 relative overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            
-            <div className="relative">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border border-emerald-500/30">
-                  <Zap className="text-emerald-400" size={24} />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold">Experience Points</h2>
-                  <p className="text-sm text-zinc-500">Your progress and level</p>
-                </div>
-              </div>
+        <div className="grid grid-cols-1 gap-6">
+          {/* XP & Level Card or Sector Performance Card */}
+          {isRanger ? (
+            <FloatingCard floatSpeed="medium">
+              <AnimatedBorder variant="gradient" color="emerald" className="h-full">
+                <div className="p-8 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-              {/* Level Badge */}
-              <div className="relative mb-6 flex items-center justify-center">
-                <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full animate-pulse" />
-                <div className="relative p-6 rounded-full bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border-2 border-emerald-500/30 backdrop-blur-sm">
-                  {isRanger ? (
-                    <Shield size={48} className="text-orange-500 drop-shadow-lg" />
-                  ) : (
-                    <TreePine size={48} className="text-emerald-500 drop-shadow-lg" />
-                  )}
-                </div>
-              </div>
-
-              {/* Level Display */}
-              <div className="text-center mb-6">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Sparkles size={20} className="text-yellow-500 animate-pulse" />
-                  <span className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-emerald-600 bg-clip-text text-transparent">
-                    Level {currentLevel}
-                  </span>
-                </div>
-                <p className="text-sm text-zinc-500">{profile?.role?.toUpperCase() || 'SCOUT'}</p>
-              </div>
-
-              {/* XP Progress Bar */}
-              <div className="w-full mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-medium text-zinc-400 flex items-center gap-1">
-                    <TrendingUp size={12} className="text-emerald-500" />
-                    Level Progress
-                  </span>
-                  <span className="text-xs font-bold text-emerald-400">
-                    {xpForCurrentLevel} / {xpForNextLevel} XP
-                  </span>
-                </div>
-                
-                <div className="relative w-full h-4 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800/50">
-                  <div 
-                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"
-                    style={{ backgroundSize: '200% 100%' }}
-                  />
-                  <div 
-                    className="relative h-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-300 transition-all duration-700 ease-out shadow-[0_0_10px_rgba(16,185,129,0.5)]"
-                    style={{ width: `${levelProgress}%` }}
-                  >
-                    <div className="absolute inset-0 bg-emerald-400/50 blur-sm" />
+                <div className="relative">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border border-emerald-500/30">
+                      <Shield className="text-emerald-400" size={24} />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold">Sector Performance</h2>
+                      <p className="text-sm text-zinc-500">Operational metrics and response tracking</p>
+                    </div>
                   </div>
-                  {levelProgress > 0 && (
-                    <div 
-                      className="absolute top-0 w-1 h-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse"
-                      style={{ left: `calc(${levelProgress}% - 2px)` }}
-                    />
-                  )}
-                </div>
-              </div>
 
-              {/* Total XP */}
-              <div className="pt-4 border-t border-zinc-800/50">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-zinc-400">Total XP</span>
-                  <span className="text-lg font-bold text-emerald-400">
-                    {profile?.xp_points || 0} / 1000
-                  </span>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-xs text-zinc-500">XP until max level</span>
-                  <span className="text-xs font-medium text-zinc-400">
-                    {1000 - (profile?.xp_points || 0)} XP
-                  </span>
-                </div>
-              </div>
-              </div>
-                </div>
-              </AnimatedBorder>
-            </FloatingCard>
-
-          {/* Achievements Card */}
-          <GlowCard glowColor="purple" intensity="medium" className="p-8 flex flex-col">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30">
-                <Award className="text-yellow-500" size={24} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold">Achievements</h2>
-                <p className="text-sm text-zinc-500">
-                  {unlockedKeys.size} of {Object.keys(achievementDefs).length} unlocked
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2 flex-1 overflow-y-auto max-h-[500px] pr-2 custom-scrollbar">
-              {Object.entries(achievementDefs).map(([key, achievement]) => {
-                const isUnlocked = unlockedKeys.has(key)
-                const unlockedAt = achievementsData.find(a => a.achievement_key === key)?.unlocked_at
-                
-                return (
-                  <div
-                    key={key}
-                    className={`group relative flex items-center gap-3 p-4 rounded-xl border transition-all duration-300 ${
-                      isUnlocked
-                        ? 'bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:scale-[1.02]'
-                        : 'bg-zinc-900/30 border-zinc-800/50 opacity-60'
-                    }`}
-                  >
-                    {isUnlocked && (
-                      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    )}
-                    
-                    <div
-                      className={`relative w-12 h-12 rounded-xl flex items-center justify-center text-xl transition-all duration-300 ${
-                        isUnlocked
-                          ? 'bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.3)] group-hover:scale-110 group-hover:rotate-3'
-                          : 'bg-zinc-800/50 border border-zinc-700/50'
-                      }`}
-                    >
-                      {isUnlocked ? (
-                        <>
-                          <span className="relative z-10">{achievement.emoji}</span>
-                          <Sparkles size={14} className="absolute text-yellow-400 opacity-0 group-hover:opacity-100 transition-opacity animate-pulse" />
-                        </>
-                      ) : (
-                        <span className="text-zinc-600">🔒</span>
-                      )}
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-semibold transition-colors ${
-                        isUnlocked 
-                          ? 'text-emerald-400 group-hover:text-emerald-300' 
-                          : 'text-zinc-500'
-                      }`}>
-                        {achievement.name}
-                      </p>
-                      <p className="text-xs text-zinc-500">{achievement.description}</p>
-                      {isUnlocked && unlockedAt && (
-                        <p className="text-xs text-zinc-600 mt-1">
-                          Unlocked {new Date(unlockedAt).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                    
-                    {isUnlocked && (
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {/* Centered content */}
+                  <div className="text-center space-y-6">
+                    {/* Shield Icon */}
+                    <div className="relative mb-6 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full animate-pulse" />
+                      <div className="relative p-6 rounded-full bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border-2 border-emerald-500/30 backdrop-blur-sm">
+                        <Shield size={48} className="text-orange-500 drop-shadow-lg" />
                       </div>
+                    </div>
+
+                    {/* RANGER Title */}
+                    <div className="mb-6">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <Sparkles size={20} className="text-yellow-500 animate-pulse" />
+                        <span className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-emerald-600 bg-clip-text text-transparent">
+                          RANGER
+                        </span>
+                      </div>
+                      <p className="text-sm text-zinc-500">PROFESSIONAL OPERATIONS</p>
+                    </div>
+
+                    {/* Radial Progress Circle for Sector Health */}
+                    <div className="relative mb-6 flex justify-center">
+                      <div className="w-24 h-24 rounded-full border-4 border-zinc-800 flex items-center justify-center relative">
+                        <div
+                          className="absolute inset-0 rounded-full border-4 border-emerald-500 transition-all duration-1000 ease-out"
+                          style={{
+                            background: `conic-gradient(from 0deg, #10b981 0deg, #10b981 ${resolutionRate * 3.6}deg, transparent ${resolutionRate * 3.6}deg)`
+                          }}
+                        />
+                        <div className="absolute inset-2 bg-black rounded-full flex items-center justify-center">
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-emerald-400">{resolutionRate}%</div>
+                            <div className="text-xs text-zinc-500">Sector Health</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Detail Rows */}
+                    <div className="w-full max-w-sm mx-auto space-y-3">
+                      {/* Active Threats */}
+                      <div className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-lg border border-zinc-800/50">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle size={14} className="text-orange-500" />
+                          <span className="text-sm font-medium text-zinc-300">Active Threats</span>
+                        </div>
+                        <span className="text-lg font-bold text-orange-400">{activeThreats}</span>
+                      </div>
+
+                      {/* Avg. Response Time */}
+                      <div className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-lg border border-zinc-800/50">
+                        <div className="flex items-center gap-2">
+                          <Clock size={14} className="text-blue-500" />
+                          <span className="text-sm font-medium text-zinc-300">Avg. Response Time</span>
+                        </div>
+                        <span className="text-lg font-bold text-blue-400">{avgResponseTime || '--'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                    </div>
+                  </AnimatedBorder>
+                </FloatingCard>
+          ) : (
+            <FloatingCard floatSpeed="medium">
+              <AnimatedBorder variant="gradient" color="emerald" className="h-full">
+                <div className="p-8 relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+              <div className="relative">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border border-emerald-500/30">
+                    <Zap className="text-emerald-400" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Experience Points</h2>
+                    <p className="text-sm text-zinc-500">Your progress and level</p>
+                  </div>
+                </div>
+
+                {/* Level Badge */}
+                <div className="relative mb-6 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full animate-pulse" />
+                  <div className="relative p-6 rounded-full bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border-2 border-emerald-500/30 backdrop-blur-sm">
+                    <TreePine size={48} className="text-emerald-500 drop-shadow-lg" />
+                  </div>
+                </div>
+
+                {/* Level Display */}
+                <div className="text-center mb-6">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Sparkles size={20} className="text-yellow-500 animate-pulse" />
+                    <span className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-emerald-600 bg-clip-text text-transparent">
+                      Level {currentLevel}
+                    </span>
+                  </div>
+                  <p className="text-sm text-zinc-500">{profile?.role?.toUpperCase() || 'SCOUT'}</p>
+                </div>
+
+                {/* XP Progress Bar */}
+                <div className="w-full mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-medium text-zinc-400 flex items-center gap-1">
+                      <TrendingUp size={12} className="text-emerald-500" />
+                      Level Progress
+                    </span>
+                    <span className="text-xs font-bold text-emerald-400">
+                      {xpForCurrentLevel} / {xpForNextLevel} XP
+                    </span>
+                  </div>
+
+                  <div className="relative w-full h-4 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800/50">
+                    <div
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"
+                      style={{ backgroundSize: '200% 100%' }}
+                    />
+                    <div
+                      className="relative h-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-300 transition-all duration-700 ease-out shadow-[0_0_10px_rgba(16,185,129,0.5)]"
+                      style={{ width: `${levelProgress}%` }}
+                    >
+                      <div className="absolute inset-0 bg-emerald-400/50 blur-sm" />
+                    </div>
+                    {levelProgress > 0 && (
+                      <div
+                        className="absolute top-0 w-1 h-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse"
+                        style={{ left: `calc(${levelProgress}% - 2px)` }}
+                      />
                     )}
                   </div>
-                )
-              })}
-            </div>
-          </GlowCard>
+                </div>
+
+                {/* Total XP */}
+                <div className="pt-4 border-t border-zinc-800/50">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-400">Total XP</span>
+                    <span className="text-lg font-bold text-emerald-400">
+                      {profile?.xp_points || 0} / 1000
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">XP until max level</span>
+                    <span className="text-xs font-medium text-zinc-400">
+                      {1000 - (profile?.xp_points || 0)} XP
+                    </span>
+                  </div>
+                </div>
+                </div>
+                  </div>
+                </AnimatedBorder>
+              </FloatingCard>
+          )}
+
         </div>
 
-        {/* Money Conversion Info Card */}
+        {/* Money Conversion Info Card - Only for Scouts */}
+        {!isRanger && (
         <AnimatedBorder variant="shimmer" color="purple" className="mt-6">
           <div className="p-8 bg-gradient-to-br from-purple-500/5 to-transparent">
             <div className="flex items-start gap-4">
@@ -380,6 +485,7 @@ export default async function ProfilePage() {
             </div>
           </div>
         </AnimatedBorder>
+        )}
       </main>
 
       {/* Bubble Menu Navigation */}

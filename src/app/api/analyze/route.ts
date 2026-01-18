@@ -66,7 +66,7 @@ IMPORTANT: If the image does not contain a plant/species, is unidentifiable, or 
 Be precise and consider the Santa Cruz County invasive weeds list. Only identify actual plant species - do not make up names for unidentifiable objects.`;
 
         const result = await generateObject({
-            model: google('gemini-flash-latest'),
+            model: google('gemini-1.5-flash'),
             schema: analyzeDataSchema,
             messages: [
                 {
